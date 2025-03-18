@@ -1,55 +1,67 @@
 import pickle
 import streamlit as st
 import requests
+from requests.exceptions import RequestException
 
-# Константы
-TMDB_API_KEY = "8265bd1679663a7ea12ac168da84d2e8"
+# Константы для TMDB API
+TMDB_API_KEY = "86ad30107fe22e81f7759f97e59d46a4"
 TMDB_LANGUAGE = "en-US"
 TMDB_POSTER_URL = "https://image.tmdb.org/t/p/w500/"
 
-def retrieve_poster(movie_identifier):
+def fetch_movie_details(movie_identifier):
     """
-    Извлекает URL постера фильма по его идентификатору через API TMDB.
-    
+    Получает данные о фильме из TMDB API, включая URL постера и рейтинг.
+
     :param movie_identifier: Уникальный идентификатор фильма
-    :return: Полный URL постера фильма
+    :return: Словарь с 'poster_url' и 'rating'
     """
-    
     api_url = f"https://api.themoviedb.org/3/movie/{movie_identifier}?api_key={TMDB_API_KEY}&language={TMDB_LANGUAGE}"
-    response = requests.get(api_url)
-    movie_data = response.json()
-    poster_relative_path = movie_data['poster_path']
-    poster_full_url = TMDB_POSTER_URL + poster_relative_path
-    return poster_full_url
+    try:
+        response = requests.get(api_url, timeout=5)
+        response.raise_for_status()
+        movie_data = response.json()
+        # Формируем URL постера, если он есть
+        poster_url = TMDB_POSTER_URL + movie_data['poster_path'] if 'poster_path' in movie_data and movie_data['poster_path'] else None
+        # Проверяем наличие рейтинга
+        if movie_data.get('vote_count', 0) > 0:
+            rating = str(round(movie_data['vote_average'], 1))
+        else:
+            rating = 'Нет рейтинга'
+        return {'poster_url': poster_url, 'rating': rating}
+    except RequestException as e:
+        print(f"Ошибка при получении данных для фильма с ID {movie_identifier}: {e}")
+        return {'poster_url': None, 'rating': 'N/A'}
 
 def generate_movie_suggestions(chosen_movie_name):
     """
-    Генерирует список рекомендованных фильмов на основе косинусного сходства.
-    
+    Генерирует список рекомендованных фильмов с их названиями, URL постеров и рейтингами.
+
     :param chosen_movie_name: Название выбранного пользователем фильма
-    :return: Кортеж из списков: названия рекомендованных фильмов и URL их постеров
+    :return: Список словарей с данными о фильмах
     """
     movie_position = movie_collection[movie_collection['title'] == chosen_movie_name].index[0]
     similarity_ranking = sorted(list(enumerate(similarity_matrix[movie_position])), reverse=True, key=lambda x: x[1])
-    suggested_movie_titles = []
-    suggested_movie_posters = []
-    for rank in similarity_ranking[1:6]:  # Берем 5 ближайших, исключая сам фильм
-        suggested_movie_id = movie_collection.iloc[rank[0]].movie_id
-        suggested_movie_posters.append(retrieve_poster(suggested_movie_id))
-        suggested_movie_titles.append(movie_collection.iloc[rank[0]].title)
-    return suggested_movie_titles, suggested_movie_posters
+    suggested_movies = []
+    for rank in similarity_ranking[1:6]:  # Топ-5 похожих фильмов
+        movie_idx = rank[0]
+        title = movie_collection.iloc[movie_idx].title
+        movie_id = movie_collection.iloc[movie_idx].movie_id
+        details = fetch_movie_details(movie_id)
+        suggested_movies.append({
+            'title': title,
+            'poster_url': details['poster_url'],
+            'rating': details['rating']
+        })
+    return suggested_movies
 
-# Заголовок приложения
 st.header('Система рекомендаций фильмов')
 
-# Загрузка данных
 movie_collection = pickle.load(open('model/movie_list.pkl', 'rb'))
 similarity_matrix = pickle.load(open('model/similarity.pkl', 'rb'))
 
-# Список названий фильмов для выбора
 available_movie_titles = movie_collection['title'].values
 
-# Интерфейс выбора фильма
+
 chosen_movie_name = st.selectbox(
     "Введите или выберите фильм из списка",
     available_movie_titles
@@ -57,10 +69,13 @@ chosen_movie_name = st.selectbox(
 
 # Обработка нажатия кнопки
 if st.button('Показать рекомендации'):
-    suggested_titles, suggested_posters = generate_movie_suggestions(chosen_movie_name)
-    # Создание колонок для вывода результатов
+    suggested_movies = generate_movie_suggestions(chosen_movie_name)
     display_columns = st.columns(5)
-    for column, title, poster in zip(display_columns, suggested_titles, suggested_posters):
+    for column, movie in zip(display_columns, suggested_movies):
         with column:
-            st.text(title)
-            st.image(poster)
+            # Отображаем название с рейтингом в скобках
+            title_with_rating = f"{movie['title']} ({movie['rating']})"
+            st.text(title_with_rating)
+            # Показываем постер, если он доступен
+            if movie['poster_url']:
+                st.image(movie['poster_url'])
