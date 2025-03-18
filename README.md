@@ -3,7 +3,7 @@
 
 A **content-based** movie recommender system using **cosine similarity** and **TMDb API**. This project allows users to get movie recommendations based on their selection, along with movie posters.  
 
-🚀 **Built with**:  
+**Built with**:  
 - 🐍 Python  
 - 🖥️ Streamlit (for web interface)  
 - 🔍 Cosine Similarity (for recommendations)  
@@ -51,7 +51,7 @@ streamlit run app.py
 
 ---
 
-## 🛠️ How It Works  
+## How It Works  
 
 1️⃣ **Data Loading**  
 - Precomputed similarity matrix (`similarity.pkl`) and movie list (`movie_list.pkl`) are loaded using `pickle`.  
